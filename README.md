@@ -39,16 +39,21 @@ RESTful API for user management built with Node.js, Express.js and PostgreSQL.
 - Swagger: https://user-management-api-layy.onrender.com/api-docs
 
 ## Getting Started
-git clone https://github.com/Patcharadnaimingchua/user-management-api.git
-cd user-management-api
-docker compose up --build
+- git clone https://github.com/Patcharadnaimingchua/user-management-api.git
+- cd user-management-api
+- docker compose up --build
 
 ## Demo Account
-Admin
+### Admin
+```
 Email: admin@example.com
 Password: 12345678
-๊User: user@example.com
+```
+### User
+```
+Email: user@example.com
 Password: 12345678
+```
 
 ## Developer
 **Patcharadnai Mingchua**
