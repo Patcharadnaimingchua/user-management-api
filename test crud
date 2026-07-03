@@ -1,0 +1,69 @@
+Register
+POST /api/auth/register
+สมัครได้
+สมัครซ้ำ → error
+
+Login
+ได้ access + refresh token
+password ผิด → 401
+
+Me
+GET /api/auth/me
+ต้อง login ก่อน
+ไม่มี token → 401
+
+Refresh Token
+POST /api/auth/refresh
+ได้ token ใหม่
+
+Logout
+POST /api/auth/logout
+token ถูก blacklist
+แล้วลองยิง /me อีกครั้ง →  401
+
+Admin ดู users
+GET /api/users
+admin เข้าได้
+user เข้าไม่ได้
+
+user by id
+GET /api/users/:id
+admin ดูได้
+user ดูตัวเองได้
+ดูคนอื่นไม่ได้
+
+Update user
+PUT /api/users/:id
+owner update ตัวเอง
+admin update ใครก็ได้
+
+Delete user
+admin เท่านั้น
+user ลบไม่ได้
+
+Toggle status
+PATCH /api/users/:id/status
+admin เท่านั้น
+disable user → login ไม่ได้
+
+Pagination + Search
+แสดง list แบบแบ่งหน้า
+search ได้
+filter role ได้
+
+Security
+Password hash
+Prisma Studio → password เป็น bcrypt
+
+ไม่ return password
+GET /api/users
+ต้องไม่มี password
+
+Rate Limit 
+POST /api/auth/login
+เกิน 5 ครั้ง → 429
+
+Helmet
+โชว์ response header:
+ป้องกัน XSS
+ป้องกัน Clickjacking ป้องกันเว็บอื่น embed ระบบเรา

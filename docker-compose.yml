@@ -4,6 +4,9 @@ services:
     container_name: postgres_db
     restart: always
 
+    ports:
+    - "5432:5432" 
+
     environment:
       POSTGRES_DB: userdb
       POSTGRES_USER: appuser
@@ -24,6 +27,8 @@ services:
 
     ports:
       - "3000:3000"
+      - "5555:5555"
+      - "5556:5556"
 
     depends_on:
       db:

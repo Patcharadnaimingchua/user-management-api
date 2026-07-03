@@ -20,6 +20,37 @@ model User {
 
   created_at    DateTime @default(now()) @db.Timestamp(6)
   updated_at    DateTime @updatedAt @db.Timestamp(6)
+
+  // 👤 คนที่ "ทำ"
+  auditLogs     AuditLog[] @relation("Actor")
+
+  // 🎯 คนที่ "โดน"
+  targetLogs    AuditLog[] @relation("Target")
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+
+  // 👤 คนที่ทำ
+  userId     Int?
+  user       User?    @relation("Actor", fields: [userId], references: [id])
+
+  // 🎯 คนที่โดน
+  targetId   Int?
+  target     User?    @relation("Target", fields: [targetId], references: [id])
+
+  action     AuditAction
+  ipAddress  String?
+  message    String?  @db.Text
+  userAgent  String?
+  meta       Json?
+
+  created_at DateTime @default(now())
+
+  @@index([userId])
+  @@index([targetId])
+  @@index([action])
+  @@index([created_at])
 }
 
 model BlacklistToken {
@@ -33,10 +64,20 @@ enum Role {
   admin
   user
 }
-model AuditLog {
-  id         Int      @id @default(autoincrement())
-  user_id    Int?
-  action     String
-  ip_address String?
-  created_at DateTime @default(now())
+
+enum AuditAction {
+  USER_LOGIN
+  USER_REGISTER
+  USER_LOGOUT
+  ADMIN_VIEW_USERS
+  VIEW_USER_DETAIL
+  ADMIN_UPDATE_USER
+  ADMIN_DELETE_USER
+  ADMIN_TOGGLE_USER_STATUS
+  REFRESH_TOKEN
+  LOGIN_FAILED
+
+  LOGIN_BLOCKED
+  USER_UPDATE_PROFILE
+  ADMIN_CREATE_USER
 }

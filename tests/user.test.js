@@ -1,106 +1,211 @@
 const request = require("supertest");
 const app = require("../src/server");
 const prisma = require("../src/config/prisma");
-const bcrypt = require("bcryptjs");
-const { registerAndLogin, createUser } = require("./helpers/auth.helper");
 
-let adminToken;
+const createUser = () => ({
+  name: "User Test",
+  email: `user_${Date.now()}@test.com`,
+  password: "Password123",
+});
+
+let admin = {};
+let user = {};
 
 beforeAll(async () => {
   await prisma.blacklistToken.deleteMany();
   await prisma.user.deleteMany();
 
-  const hash = await bcrypt.hash("12345678", 10);
+  // 🔥 create admin
+  const adminData = createUser();
 
-  await prisma.user.create({
-    data: {
-      name: "Admin",
-      email: "admin@example.com",
-      password: hash,
-      role: "admin",
-      is_active: true,
-    },
+  await request(app).post("/api/auth/register").send(adminData);
+
+  const loginAdmin = await request(app)
+    .post("/api/auth/login")
+    .send(adminData);
+
+  const adminUser = await prisma.user.findUnique({
+    where: { email: adminData.email },
   });
 
-  const res = await request(app)
-    .post("/api/auth/login")
-    .send({ email: "admin@example.com", password: "12345678" });
+  // set role = admin
+  await prisma.user.update({
+    where: { id: adminUser.id },
+    data: { role: "admin" },
+  });
 
-  adminToken = res.body.accessToken;
+  admin = {
+    ...loginAdmin.body,
+    id: adminUser.id,
+  };
+
+  // 🔥 create normal user
+  const userData = createUser();
+
+  await request(app).post("/api/auth/register").send(userData);
+
+  const loginUser = await request(app)
+    .post("/api/auth/login")
+    .send(userData);
+
+  const normalUser = await prisma.user.findUnique({
+    where: { email: userData.email },
+  });
+
+  user = {
+    ...loginUser.body,
+    id: normalUser.id,
+  };
 });
 
 afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("User API", () => {
+describe("USER & ADMIN API", () => {
 
-  it("ไม่มี token → 401", async () => {
-    const res = await request(app).get("/api/users");
-    expect(res.statusCode).toBe(401);
-  });
-
+  // ================= GET USERS =================
   it("admin ดู users ได้", async () => {
     const res = await request(app)
       .get("/api/users")
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${admin.accessToken}`);
 
     expect(res.statusCode).toBe(200);
+    expect(res.body.data.users).toBeDefined();
   });
 
-  it("user ห้ามดู users → 403", async () => {
-    const { accessToken } = await registerAndLogin();
-
+  it("user ดู users ไม่ได้", async () => {
     const res = await request(app)
       .get("/api/users")
-      .set("Authorization", `Bearer ${accessToken}`);
+      .set("Authorization", `Bearer ${user.accessToken}`);
 
     expect(res.statusCode).toBe(403);
   });
 
+  // ================= GET USER BY ID =================
+  it("admin ดู user by id ได้", async () => {
+    const res = await request(app)
+      .get(`/api/users/${user.id}`)
+      .set("Authorization", `Bearer ${admin.accessToken}`);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data.id).toBe(user.id);
+  });
+
   it("user ดูตัวเองได้", async () => {
-    const { userId, accessToken } = await registerAndLogin();
-
     const res = await request(app)
-      .get(`/api/users/${userId}`)
-      .set("Authorization", `Bearer ${accessToken}`);
+      .get(`/api/users/${user.id}`)
+      .set("Authorization", `Bearer ${user.accessToken}`);
 
     expect(res.statusCode).toBe(200);
   });
 
-  it("user ห้ามดูคนอื่น", async () => {
-    const { accessToken } = await registerAndLogin();
-
+  it("user ดูคนอื่นไม่ได้", async () => {
     const res = await request(app)
-      .get("/api/users/99999")
-      .set("Authorization", `Bearer ${accessToken}`);
+      .get(`/api/users/${admin.id}`)
+      .set("Authorization", `Bearer ${user.accessToken}`);
 
-    expect([403, 404]).toContain(res.statusCode);
+    expect(res.statusCode).toBe(403);
   });
 
-  it("admin ลบ user ได้", async () => {
-    const user = createUser();
-
-    const reg = await request(app)
-      .post("/api/auth/register")
-      .send(user);
-
-    const res = await request(app)
-      .delete(`/api/users/${reg.body.data.id}`)
-      .set("Authorization", `Bearer ${adminToken}`);
-
-    expect(res.statusCode).toBe(200);
-  });
-
+  // ================= UPDATE =================
   it("user update ตัวเองได้", async () => {
-    const { userId, accessToken } = await registerAndLogin();
-
     const res = await request(app)
-      .put(`/api/users/${userId}`)
-      .set("Authorization", `Bearer ${accessToken}`)
-      .send({ name: "Updated" });
+      .put(`/api/users/${user.id}`)
+      .set("Authorization", `Bearer ${user.accessToken}`)
+      .send({ name: "Updated Name" });
 
     expect(res.statusCode).toBe(200);
+    expect(res.body.data.name).toBe("Updated Name");
+  });
+
+  it("user update คนอื่นไม่ได้", async () => {
+    const res = await request(app)
+      .put(`/api/users/${admin.id}`)
+      .set("Authorization", `Bearer ${user.accessToken}`)
+      .send({ name: "Hack" });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("admin update user ได้", async () => {
+    const res = await request(app)
+      .put(`/api/users/${user.id}`)
+      .set("Authorization", `Bearer ${admin.accessToken}`)
+      .send({ name: "Admin Updated" });
+
+    expect(res.statusCode).toBe(200);
+  });
+
+  // ================= CREATE USER =================
+  it("admin create user", async () => {
+    const res = await request(app)
+      .post("/api/users")
+      .set("Authorization", `Bearer ${admin.accessToken}`)
+      .send(createUser());
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.data.email).toBeDefined();
+  });
+
+  it("user create user ไม่ได้", async () => {
+    const res = await request(app)
+      .post("/api/users")
+      .set("Authorization", `Bearer ${user.accessToken}`)
+      .send(createUser());
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  // ================= TOGGLE STATUS =================
+  it("admin toggle status", async () => {
+    const res = await request(app)
+      .patch(`/api/users/${user.id}/status`)
+      .set("Authorization", `Bearer ${admin.accessToken}`);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data.is_active).toBeDefined();
+  });
+
+  it("user toggle status ไม่ได้", async () => {
+    const res = await request(app)
+      .patch(`/api/users/${admin.id}/status`)
+      .set("Authorization", `Bearer ${user.accessToken}`);
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  // ================= DELETE =================
+  it("admin delete user", async () => {
+    const newUser = createUser();
+
+    await request(app).post("/api/auth/register").send(newUser);
+
+    const created = await prisma.user.findUnique({
+      where: { email: newUser.email },
+    });
+
+    const res = await request(app)
+      .delete(`/api/users/${created.id}`)
+      .set("Authorization", `Bearer ${admin.accessToken}`);
+
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("admin ลบตัวเองไม่ได้", async () => {
+    const res = await request(app)
+      .delete(`/api/users/${admin.id}`)
+      .set("Authorization", `Bearer ${admin.accessToken}`);
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("user delete ไม่ได้", async () => {
+    const res = await request(app)
+      .delete(`/api/users/${admin.id}`)
+      .set("Authorization", `Bearer ${user.accessToken}`);
+
+    expect(res.statusCode).toBe(403);
   });
 
 });

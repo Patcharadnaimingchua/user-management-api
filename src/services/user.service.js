@@ -1,11 +1,11 @@
 const prisma = require("../config/prisma");
 
-exports.getUsers = async ({ skip, limit, where, orderBy }) => {
+exports.getUsers = async ({ skip = 0, limit = 10, where = {}, orderBy }) => {
   return prisma.user.findMany({
     where,
     skip,
-    take: limit,
-    orderBy,
+    take: Math.min(limit, 100), // กัน limit เกิน
+    orderBy: orderBy || { created_at: "desc" }, // fallback
     select: {
       id: true,
       name: true,
@@ -17,6 +17,6 @@ exports.getUsers = async ({ skip, limit, where, orderBy }) => {
   });
 };
 
-exports.countUsers = async (where) => {
+exports.countUsers = async (where = {}) => {
   return prisma.user.count({ where });
 };

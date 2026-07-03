@@ -21,7 +21,7 @@ const isAdmin = (req, res, next) => {
  * @swagger
  * tags:
  *   name: Users
- *   description: จัดการผู้ใช้งาน
+ *   description: จัดการผู้ใช้งาน (User Management)
  */
 
 /**
@@ -30,6 +30,14 @@ const isAdmin = (req, res, next) => {
  *   get:
  *     summary: ดึงรายการผู้ใช้ทั้งหมด (Admin เท่านั้น)
  *     tags: [Users]
+ *     description: |
+ *       ใช้สำหรับดูรายการ user ทั้งหมดในระบบ (เฉพาะ admin)
+ *
+ *       รองรับ:
+ *       - pagination
+ *       - search (name, email)
+ *       - filter role
+ *       - sort
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -65,11 +73,28 @@ const isAdmin = (req, res, next) => {
  *           example: desc
  *     responses:
  *       200:
- *         description: ดึงข้อมูลสำเร็จ
+ *         description: สำเร็จ
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: ดึงข้อมูลผู้ใช้สำเร็จ
+ *               data:
+ *                 users:
+ *                   - id: 1
+ *                     name: John
+ *                     email: john@example.com
+ *                     role: user
+ *                     is_active: true
+ *                 pagination:
+ *                   currentPage: 1
+ *                   totalPages: 1
+ *                   totalItems: 1
+ *                   itemsPerPage: 10
  *       401:
- *         description: ไม่ได้ login หรือ token ไม่ถูกต้อง
+ *         description: ไม่ได้ login
  *       403:
- *         description: ไม่มีสิทธิ์ (ไม่ใช่ admin)
+ *         description: ไม่ใช่ admin
  */
 router.get("/", authMiddleware, isAdmin, userController.getUsers);
 
@@ -77,8 +102,9 @@ router.get("/", authMiddleware, isAdmin, userController.getUsers);
  * @swagger
  * /api/users/{id}:
  *   get:
- *     summary: ดึงข้อมูลผู้ใช้รายบุคคล (Admin หรือ Owner)
+ *     summary: ดึงข้อมูลผู้ใช้รายบุคคล
  *     tags: [Users]
+ *     description: Admin หรือเจ้าของ account เท่านั้นที่ดูได้
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -89,13 +115,23 @@ router.get("/", authMiddleware, isAdmin, userController.getUsers);
  *           type: integer
  *     responses:
  *       200:
- *         description: ดึงข้อมูลสำเร็จ
+ *         description: สำเร็จ
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: สำเร็จ
+ *               data:
+ *                 id: 1
+ *                 name: John
+ *                 email: john@example.com
+ *                 role: user
  *       401:
- *         description: ไม่ได้ login หรือ token ไม่ถูกต้อง
+ *         description: ไม่ได้ login
  *       403:
- *         description: ไม่มีสิทธิ์ (ไม่ใช่เจ้าของหรือ admin / account ถูกปิด)
+ *         description: ไม่มีสิทธิ์
  *       404:
- *         description: ไม่พบผู้ใช้
+ *         description: ไม่พบ user
  */
 router.get("/:id", authMiddleware, userController.getUserById);
 
@@ -103,8 +139,9 @@ router.get("/:id", authMiddleware, userController.getUserById);
  * @swagger
  * /api/users/{id}:
  *   put:
- *     summary: อัปเดตข้อมูลผู้ใช้ (Admin หรือ Owner)
+ *     summary: อัปเดตข้อมูลผู้ใช้
  *     tags: [Users]
+ *     description: Admin หรือเจ้าของ account เท่านั้น
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -123,14 +160,22 @@ router.get("/:id", authMiddleware, userController.getUserById);
  *     responses:
  *       200:
  *         description: อัปเดตสำเร็จ
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: อัปเดตสำเร็จ
+ *               data:
+ *                 id: 1
+ *                 name: John Doe
  *       400:
- *         description: ข้อมูลไม่ถูกต้อง (validation failed)
+ *         description: validation failed
  *       401:
- *         description: ไม่ได้ login หรือ token ไม่ถูกต้อง
+ *         description: ไม่ได้ login
  *       403:
- *         description: ไม่มีสิทธิ์ (ไม่ใช่เจ้าของหรือ admin / account ถูกปิด)
+ *         description: ไม่มีสิทธิ์
  *       404:
- *         description: ไม่พบผู้ใช้
+ *         description: ไม่พบ user
  */
 router.put("/:id", authMiddleware, userController.updateUser);
 
@@ -140,6 +185,7 @@ router.put("/:id", authMiddleware, userController.updateUser);
  *   delete:
  *     summary: ลบผู้ใช้ (Admin เท่านั้น)
  *     tags: [Users]
+ *     description: admin เท่านั้น และห้ามลบตัวเอง
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -152,11 +198,11 @@ router.put("/:id", authMiddleware, userController.updateUser);
  *       200:
  *         description: ลบสำเร็จ
  *       401:
- *         description: ไม่ได้ login หรือ token ไม่ถูกต้อง
+ *         description: ไม่ได้ login
  *       403:
- *         description: ไม่มีสิทธิ์ (ไม่ใช่ admin)
+ *         description: ไม่ใช่ admin
  *       404:
- *         description: ไม่พบผู้ใช้
+ *         description: ไม่พบ user
  */
 router.delete("/:id", authMiddleware, isAdmin, userController.deleteUser);
 
@@ -166,6 +212,7 @@ router.delete("/:id", authMiddleware, isAdmin, userController.deleteUser);
  *   patch:
  *     summary: เปิด/ปิดการใช้งานผู้ใช้ (Admin เท่านั้น)
  *     tags: [Users]
+ *     description: toggle is_active ของ user
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -176,14 +223,65 @@ router.delete("/:id", authMiddleware, isAdmin, userController.deleteUser);
  *           type: integer
  *     responses:
  *       200:
- *         description: อัปเดตสถานะสำเร็จ
+ *         description: สำเร็จ
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: อัปเดตสำเร็จ
+ *               data:
+ *                 id: 1
+ *                 is_active: false
  *       401:
- *         description: ไม่ได้ login หรือ token ไม่ถูกต้อง
+ *         description: ไม่ได้ login
  *       403:
- *         description: ไม่มีสิทธิ์ (ไม่ใช่ admin หรือ account ถูกปิด)
+ *         description: ไม่มีสิทธิ์
  *       404:
- *         description: ไม่พบผู้ใช้
+ *         description: ไม่พบ user
  */
 router.patch("/:id/status", authMiddleware, isAdmin, userController.updateStatus);
+
+/**
+ * @swagger
+ * /api/users:
+ *   post:
+ *     summary: สร้างผู้ใช้ (Admin เท่านั้น)
+ *     tags: [Users]
+ *     description: admin สามารถสร้าง user ใหม่ได้
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           example:
+ *             name: "Jane Doe"
+ *             email: "jane@example.com"
+ *             password: "12345678"
+ *             role: "user"
+ *     responses:
+ *       201:
+ *         description: สร้างสำเร็จ
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: สร้างข้อมูลสำเร็จ
+ *               data:
+ *                 id: 2
+ *                 name: Jane Doe
+ *                 email: jane@example.com
+ *                 role: user
+ *       400:
+ *         description: validation failed
+ *       401:
+ *         description: ไม่ได้ login
+ *       403:
+ *         description: ไม่ใช่ admin
+ *       409:
+ *         description: email ซ้ำ
+ */
+router.post("/", authMiddleware, isAdmin, userController.createUser);
+
 
 module.exports = router;

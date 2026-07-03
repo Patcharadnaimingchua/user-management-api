@@ -4,6 +4,7 @@ const swaggerJsdoc = require("swagger-jsdoc");
 const helmet = require("helmet");
 const cors = require("cors");
 const morgan = require("morgan");
+
 const { apiLimiter } = require("./middlewares/rateLimit");
 const errorHandler = require("./middlewares/error");
 
@@ -11,46 +12,48 @@ const app = express();
 
 // ================= CONFIG =================
 
-// รองรับ proxy (docker / nginx / cloudflare)
-app.set("trust proxy", 1);
+// เปิดเฉพาะ production
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
 
 // ================= GLOBAL MIDDLEWARE =================
 
-// Security headers (กัน XSS, clickjacking ฯลฯ)
+// Security
 app.use(
   helmet({
     crossOriginResourcePolicy: false,
   })
 );
 
-// เปิด CORS (กำหนด origin ผ่าน .env)
+// ================= CORS (PRO VERSION) =================
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: true, 
     credentials: true,
   })
 );
 
-// log request (debug / monitoring)
+// Logging
 app.use(morgan("dev"));
 
-// จำกัดขนาด request body
+// JSON limit
 app.use(express.json({ limit: "10kb" }));
 
-// ป้องกัน spam / brute force (ใช้กับทุก /api)
+// Rate limit
 app.use("/api", apiLimiter);
 
-// ================= SWAGGER (เฉพาะ dev) =================
+// ================= SWAGGER =================
 
 if (process.env.NODE_ENV !== "production") {
-  const swaggerOptions = {
+  const swaggerSpec = swaggerJsdoc({
     definition: {
       openapi: "3.0.0",
       info: {
         title: "User Management API",
         version: "1.0.0",
         description:
-          "RESTful API with JWT Authentication, RBAC, Pagination and Filtering",
+          "REST API with JWT Authentication, RBAC, Pagination and Filtering",
       },
       servers: [
         {
@@ -67,46 +70,40 @@ if (process.env.NODE_ENV !== "production") {
         },
       },
     },
-    apis: ["./src/routes/*.js"],
-  };
-
-  const swaggerSpec = swaggerJsdoc(swaggerOptions);
+    apis: [__dirname + "/routes/*.js"], // FIX docker path
+  });
 
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 }
 
 // ================= ROUTES =================
 
-const authRoutes = require("./routes/auth.routes");
-const userRoutes = require("./routes/user.routes");
-const adminRoutes = require("./routes/admin.routes");
+app.use("/api/auth", require("./routes/auth.routes"));
+app.use("/api/users", require("./routes/user.routes"));
+app.use("/api/admin", require("./routes/admin.routes"));
 
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/admin", adminRoutes);
-// ================= HEALTH CHECK =================
+// ================= HEALTH =================
 
-// สำหรับ docker / k8s
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
+    env: process.env.NODE_ENV,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   });
 });
 
-// หน้า root
 app.get("/", (req, res) => {
   res.json({
     success: true,
     message: "API running",
+    version: "1.0.0",
     timestamp: new Date().toISOString(),
   });
 });
 
 // ================= NOT FOUND =================
 
-// route ไม่ถูกต้อง
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -117,14 +114,12 @@ app.use((req, res) => {
 
 // ================= ERROR HANDLER =================
 
-// จัดการ error กลางระบบ (ต้องอยู่ล่างสุด)
 app.use(errorHandler);
 
-// ================= START SERVER =================
+// ================= START =================
 
 const PORT = process.env.PORT || 3000;
 
-// ไม่ start ตอน test (สำคัญมาก)
 if (process.env.NODE_ENV !== "test") {
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);

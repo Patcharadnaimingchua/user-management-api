@@ -1,11 +1,19 @@
 {
-  "name": "backend",
+  "name": "user-management-api",
   "version": "1.0.0",
+  "description": "RESTful User Management API with JWT Authentication, RBAC, Prisma ORM, PostgreSQL, Docker, and Swagger",
   "main": "src/server.js",
+  "type": "commonjs",
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "test": "NODE_ENV=test jest",
+
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:seed": "node prisma/seed.js",
+    "prisma:studio": "prisma studio",
+
+    "test": "NODE_ENV=test dotenv -e .env.test -- jest",
     "test:watch": "NODE_ENV=test jest --watch",
     "test:coverage": "NODE_ENV=test jest --coverage"
   },
@@ -16,6 +24,7 @@
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
     "express": "^4.18.2",
     "express-rate-limit": "^8.3.1",
     "helmet": "^8.1.0",
@@ -26,6 +35,7 @@
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
+    "dotenv-cli": "^11.0.0",
     "jest": "^30.3.0",
     "nodemon": "^3.0.0",
     "supertest": "^7.2.2"

@@ -1,45 +1,38 @@
 const prisma = require("../config/prisma");
 const bcrypt = require("bcryptjs");
+
 const { messages, errors } = require("../utils/messages");
 const userService = require("../services/user.service");
-const audit = require("../utils/audit");
+const { createAuditLog } = require("../utils/audit");
 
-const getIP = (req) => req.headers["x-forwarded-for"] || req.ip;
-
-const safeAudit = (data) => {
-  try {
-    audit.log(data);
-  } catch (e) {
-    console.error("audit failed:", e.message);
-  }
+// ================= HELPER =================
+const getIP = (req) => {
+  const forwarded = req.headers["x-forwarded-for"];
+  return forwarded ? forwarded.split(",")[0].trim() : req.ip;
 };
 
-// ================= GET USERS (ADMIN ONLY) =================
+// ================= GET USERS =================
 exports.getUsers = async (req, res, next) => {
   try {
     if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
         message: errors.FORBIDDEN,
-        timestamp: new Date().toISOString(),
       });
     }
 
     const page = Number(req.query.page) || 1;
-    let limit = Number(req.query.limit) || 10;
+    const limit = Math.min(Number(req.query.limit) || 10, 100);
 
-    if (limit > 100) limit = 100;
-    if (limit < 1) limit = 10;
-
-    const search = req.query.search;
-    const role = req.query.role;
-    const sort = req.query.sort || "created_at";
-    const order = req.query.order === "asc" ? "asc" : "desc";
+    if (!Number.isInteger(page) || page < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "page ต้องมากกว่า 0",
+      });
+    }
 
     const skip = (page - 1) * limit;
-
-    const allowedSort = ["created_at", "name", "email"];
-    const sortField = allowedSort.includes(sort) ? sort : "created_at";
+    const { search, role, sort, order } = req.query;
 
     const where = {};
 
@@ -50,29 +43,38 @@ exports.getUsers = async (req, res, next) => {
       ];
     }
 
-    if (role) {
-      where.role = role;
-    }
+    if (role) where.role = role;
+
+    const allowedSort = ["created_at", "name", "email"];
+    const sortField = allowedSort.includes(sort) ? sort : "created_at";
+    const sortOrder = order === "asc" ? "asc" : "desc";
 
     const [users, totalItems] = await Promise.all([
       userService.getUsers({
         skip,
         limit,
         where,
-        orderBy: { [sortField]: order },
+        orderBy: { [sortField]: sortOrder },
       }),
       userService.countUsers(where),
     ]);
 
-    // ✅ audit admin action
-    safeAudit({
+    createAuditLog({
       userId: req.user.id,
       action: "ADMIN_VIEW_USERS",
       ip: getIP(req),
+      req,
+      meta: {
+        page,
+        limit,
+        search,
+        role,
+      },
     });
 
     return res.json({
       success: true,
+      message: "ดึงข้อมูลผู้ใช้สำเร็จ",
       data: {
         users,
         pagination: {
@@ -94,11 +96,17 @@ exports.getUserById = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
 
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "id ต้องเป็นตัวเลข",
+      });
+    }
+
     if (req.user.role !== "admin" && req.user.id !== id) {
       return res.status(403).json({
         success: false,
         message: errors.FORBIDDEN,
-        timestamp: new Date().toISOString(),
       });
     }
 
@@ -118,9 +126,16 @@ exports.getUserById = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: errors.NOT_FOUND,
-        timestamp: new Date().toISOString(),
       });
     }
+
+    createAuditLog({
+      userId: req.user.id,
+      targetId: id,
+      action: "VIEW_USER_DETAIL",
+      ip: getIP(req),
+      req,
+    });
 
     return res.json({
       success: true,
@@ -138,11 +153,17 @@ exports.updateUser = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
 
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "id ต้องเป็นตัวเลข",
+      });
+    }
+
     if (req.user.role !== "admin" && req.user.id !== id) {
       return res.status(403).json({
         success: false,
         message: errors.FORBIDDEN,
-        timestamp: new Date().toISOString(),
       });
     }
 
@@ -152,7 +173,6 @@ exports.updateUser = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: errors.NOT_FOUND,
-        timestamp: new Date().toISOString(),
       });
     }
 
@@ -164,10 +184,7 @@ exports.updateUser = async (req, res, next) => {
         return res.status(400).json({
           success: false,
           message: errors.VALIDATION_FAILED,
-          errors: [
-            { field: "name", message: "ชื่อต้องมีความยาว 2-100 ตัวอักษร" },
-          ],
-          timestamp: new Date().toISOString(),
+          errors: [{ field: "name", message: "ชื่อต้องมีความยาว 2-100 ตัวอักษร" }],
         });
       }
       data.name = name.trim();
@@ -178,16 +195,25 @@ exports.updateUser = async (req, res, next) => {
         return res.status(400).json({
           success: false,
           message: errors.VALIDATION_FAILED,
-          errors: [
-            { field: "password", message: "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร" },
-          ],
-          timestamp: new Date().toISOString(),
+          errors: [{ field: "password", message: "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร" }],
         });
       }
       data.password = await bcrypt.hash(password, 10);
     }
 
-    const user = await prisma.user.update({
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ไม่มีข้อมูลสำหรับอัปเดต",
+      });
+    }
+
+    // 🔥 before
+    const before = {
+      name: existingUser.name,
+    };
+
+    const updatedUser = await prisma.user.update({
       where: { id },
       data,
       select: {
@@ -199,20 +225,27 @@ exports.updateUser = async (req, res, next) => {
       },
     });
 
-    // ✅ audit
-    safeAudit({
+    // 🔥 after
+    const after = {
+      name: updatedUser.name,
+    };
+
+    createAuditLog({
       userId: req.user.id,
-      action:
-        req.user.role === "admin"
-          ? "ADMIN_UPDATE_USER"
-          : "USER_UPDATE_PROFILE",
+      targetId: id,
+      action: req.user.role === "admin"
+        ? "ADMIN_UPDATE_USER"
+        : "USER_UPDATE_PROFILE",
       ip: getIP(req),
+      req,
+      before,
+      after,
     });
 
     return res.json({
       success: true,
       message: messages.UPDATED,
-      data: user,
+      data: updatedUser,
     });
 
   } catch (err) {
@@ -225,11 +258,24 @@ exports.deleteUser = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
 
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "id ต้องเป็นตัวเลข",
+      });
+    }
+
     if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
         message: errors.FORBIDDEN,
-        timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (req.user.id === id) {
+      return res.status(400).json({
+        success: false,
+        message: "ไม่สามารถลบบัญชีตัวเองได้",
       });
     }
 
@@ -239,17 +285,20 @@ exports.deleteUser = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: errors.NOT_FOUND,
-        timestamp: new Date().toISOString(),
       });
     }
 
     await prisma.user.delete({ where: { id } });
 
-    // ✅ audit
-    safeAudit({
+    createAuditLog({
       userId: req.user.id,
+      targetId: id,
       action: "ADMIN_DELETE_USER",
       ip: getIP(req),
+      req,
+      meta: {
+        deletedEmail: user.email,
+      },
     });
 
     return res.json({
@@ -262,16 +311,29 @@ exports.deleteUser = async (req, res, next) => {
   }
 };
 
-// ================= UPDATE STATUS =================
+// ================= TOGGLE STATUS =================
 exports.updateStatus = async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "id ต้องเป็นตัวเลข",
+      });
+    }
 
     if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
         message: errors.FORBIDDEN,
-        timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (req.user.id === id) {
+      return res.status(400).json({
+        success: false,
+        message: "ไม่สามารถเปลี่ยนสถานะตัวเองได้",
       });
     }
 
@@ -281,32 +343,130 @@ exports.updateStatus = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: errors.NOT_FOUND,
-        timestamp: new Date().toISOString(),
       });
     }
 
+    const before = { is_active: user.is_active };
+
     const updated = await prisma.user.update({
       where: { id },
-      data: {
-        is_active: !user.is_active,
-      },
-      select: {
-        id: true,
-        is_active: true,
-      },
+      data: { is_active: !user.is_active },
+      select: { id: true, is_active: true },
     });
 
-    // ✅ audit
-    safeAudit({
+    const after = { is_active: updated.is_active };
+
+    createAuditLog({
       userId: req.user.id,
+      targetId: id,
       action: "ADMIN_TOGGLE_USER_STATUS",
       ip: getIP(req),
+      req,
+      before,
+      after,
     });
 
     return res.json({
       success: true,
       message: messages.UPDATED,
       data: updated,
+    });
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ================= CREATE USER (ADMIN) =================
+exports.createUser = async (req, res, next) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: errors.FORBIDDEN,
+      });
+    }
+
+    const { name, email, password, role } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: errors.VALIDATION_FAILED,
+      });
+    }
+
+    // normalize email
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // validate name
+    if (name.trim().length < 2 || name.trim().length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: errors.VALIDATION_FAILED,
+        errors: [
+          { field: "name", message: "ชื่อต้องมีความยาว 2-100 ตัวอักษร" },
+        ],
+      });
+    }
+
+    // validate password
+    if (password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: errors.VALIDATION_FAILED,
+        errors: [
+          { field: "password", message: "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร" },
+        ],
+      });
+    }
+
+    const existing = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: errors.EMAIL_ALREADY_EXISTS,
+      });
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        email: normalizedEmail,
+        password: hashed,
+        role: role || "user",
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        is_active: true,
+      },
+    });
+
+    // ✅ audit (สำคัญมาก)
+    createAuditLog({
+      userId: req.user.id,
+      targetId: user.id,
+      action: "ADMIN_CREATE_USER",
+      ip: getIP(req),
+      req,
+      meta: {
+        email: user.email,
+        role: user.role,
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: messages.CREATED,
+      data: user,
     });
 
   } catch (err) {

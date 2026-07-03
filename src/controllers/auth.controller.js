@@ -1,18 +1,15 @@
 const bcrypt = require("bcryptjs");
-const jwt = require('jsonwebtoken');
-const prisma = require('../config/prisma');
-const audit = require("../utils/audit");
-const { messages, errors } = require('../utils/messages');
-const { validateRegister } = require('../utils/validate');
+const jwt = require("jsonwebtoken");
+const prisma = require("../config/prisma");
 
-const getIP = (req) => req.headers["x-forwarded-for"] || req.ip;
+const { messages, errors } = require("../utils/messages");
+const { validateRegister } = require("../utils/validate");
+const { createAuditLog } = require("../utils/audit");
 
-const safeAudit = (data) => {
-  try {
-    audit.log(data);
-  } catch (e) {
-    console.error("audit failed:", e.message);
-  }
+// ================= HELPER =================
+const getIP = (req) => {
+  const forwarded = req.headers["x-forwarded-for"];
+  return forwarded ? forwarded.split(",")[0].trim() : req.ip;
 };
 
 // ================= REGISTER =================
@@ -25,7 +22,6 @@ exports.register = async (req, res, next) => {
         success: false,
         message: errors.VALIDATION_FAILED,
         errors: validationErrors,
-        timestamp: new Date().toISOString(),
       });
     }
 
@@ -33,14 +29,13 @@ exports.register = async (req, res, next) => {
     const normalizedEmail = email.toLowerCase().trim();
 
     const existing = await prisma.user.findUnique({
-      where: { email: normalizedEmail }
+      where: { email: normalizedEmail },
     });
 
     if (existing) {
       return res.status(409).json({
         success: false,
         message: errors.EMAIL_ALREADY_EXISTS,
-        timestamp: new Date().toISOString(),
       });
     }
 
@@ -51,26 +46,28 @@ exports.register = async (req, res, next) => {
         name: name.trim(),
         email: normalizedEmail,
         password: hashed,
-        role: 'user'
+        role: "user",
       },
       select: {
         id: true,
         name: true,
         email: true,
-        role: true
-      }
+        role: true,
+      },
     });
 
-    safeAudit({
+    createAuditLog({
       userId: user.id,
+      targetId: user.id,
       action: "USER_REGISTER",
       ip: getIP(req),
+      req,
     });
 
     return res.status(201).json({
       success: true,
       message: messages.CREATED,
-      data: user
+      data: user,
     });
 
   } catch (err) {
@@ -83,60 +80,67 @@ exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    const errorsArr = [];
-    if (!email) errorsArr.push({ field: 'email', message: 'กรุณากรอกอีเมล' });
-    if (!password) errorsArr.push({ field: 'password', message: 'กรุณากรอกรหัสผ่าน' });
-
-    if (errorsArr.length > 0) {
+    if (!email || !password) {
       return res.status(400).json({
         success: false,
         message: errors.VALIDATION_FAILED,
-        errors: errorsArr,
-        timestamp: new Date().toISOString(),
+        errors: [
+          !email && { field: "email", message: "กรุณากรอกอีเมล" },
+          !password && { field: "password", message: "กรุณากรอกรหัสผ่าน" },
+        ].filter(Boolean),
       });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
 
     const user = await prisma.user.findUnique({
-      where: { email: normalizedEmail }
+      where: { email: normalizedEmail },
     });
 
     if (!user) {
-      safeAudit({
-        userId: null,
+      createAuditLog({
         action: "LOGIN_FAILED",
         ip: getIP(req),
+        req,
+        meta: { email: normalizedEmail, reason: "user_not_found" },
       });
 
       return res.status(401).json({
         success: false,
         message: errors.INVALID_CREDENTIALS,
-        timestamp: new Date().toISOString(),
       });
     }
 
     if (!user.is_active) {
+      createAuditLog({
+        userId: user.id,
+        targetId: user.id,
+        action: "LOGIN_BLOCKED",
+        ip: getIP(req),
+        req,
+      });
+
       return res.status(403).json({
         success: false,
         message: errors.ACCOUNT_DISABLED,
-        timestamp: new Date().toISOString(),
       });
     }
 
     const match = await bcrypt.compare(password, user.password);
 
     if (!match) {
-      safeAudit({
+      createAuditLog({
         userId: user.id,
+        targetId: user.id,
         action: "LOGIN_FAILED",
         ip: getIP(req),
+        req,
+        meta: { reason: "wrong_password" },
       });
 
       return res.status(401).json({
         success: false,
         message: errors.INVALID_CREDENTIALS,
-        timestamp: new Date().toISOString(),
       });
     }
 
@@ -154,20 +158,22 @@ exports.login = async (req, res, next) => {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { refresh_token: refreshToken }
+      data: { refresh_token: refreshToken },
     });
 
-    safeAudit({
+    createAuditLog({
       userId: user.id,
+      targetId: user.id,
       action: "USER_LOGIN",
       ip: getIP(req),
+      req,
     });
 
     return res.json({
       success: true,
       message: messages.LOGIN_SUCCESS,
       accessToken,
-      refreshToken
+      refreshToken,
     });
 
   } catch (err) {
@@ -180,7 +186,7 @@ exports.me = async (req, res) => {
   return res.json({
     success: true,
     message: messages.FETCHED,
-    data: req.user
+    data: req.user,
   });
 };
 
@@ -188,15 +194,15 @@ exports.me = async (req, res) => {
 exports.refresh = async (req, res, next) => {
   try {
     let { refreshToken } = req.body;
-    if (refreshToken) refreshToken = refreshToken.trim();
 
     if (!refreshToken) {
       return res.status(400).json({
         success: false,
         message: errors.MISSING_REFRESH_TOKEN,
-        timestamp: new Date().toISOString(),
       });
     }
+
+    refreshToken = refreshToken.trim();
 
     let decoded;
     try {
@@ -205,7 +211,6 @@ exports.refresh = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: errors.INVALID_REFRESH_TOKEN,
-        timestamp: new Date().toISOString(),
       });
     }
 
@@ -213,19 +218,17 @@ exports.refresh = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: errors.INVALID_TOKEN_TYPE,
-        timestamp: new Date().toISOString(),
       });
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: decoded.id }
+      where: { id: decoded.id },
     });
 
-    if (!user || !user.refresh_token || user.refresh_token.trim() !== refreshToken) {
+    if (!user || !user.is_active || user.refresh_token !== refreshToken) {
       return res.status(401).json({
         success: false,
         message: errors.INVALID_REFRESH_TOKEN,
-        timestamp: new Date().toISOString(),
       });
     }
 
@@ -243,20 +246,22 @@ exports.refresh = async (req, res, next) => {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { refresh_token: newRefreshToken }
+      data: { refresh_token: newRefreshToken },
     });
 
-    safeAudit({
+    createAuditLog({
       userId: user.id,
+      targetId: user.id,
       action: "REFRESH_TOKEN",
       ip: getIP(req),
+      req,
     });
 
     return res.json({
       success: true,
       message: messages.REFRESH_SUCCESS,
       accessToken: newAccessToken,
-      refreshToken: newRefreshToken
+      refreshToken: newRefreshToken,
     });
 
   } catch (err) {
@@ -269,11 +274,10 @@ exports.logout = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return res.status(401).json({
         success: false,
         message: errors.UNAUTHORIZED,
-        timestamp: new Date().toISOString(),
       });
     }
 
@@ -286,45 +290,102 @@ exports.logout = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: errors.INVALID_TOKEN,
-        timestamp: new Date().toISOString(),
       });
     }
 
-    if (decoded.type !== "access") {
-      return res.status(401).json({
-        success: false,
-        message: errors.INVALID_TOKEN_TYPE,
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    const existing = await prisma.blacklistToken.findUnique({
-      where: { token },
+    await prisma.blacklistToken.create({
+      data: {
+        token,
+        expired_at: new Date(decoded.exp * 1000),
+      },
     });
-
-    if (!existing) {
-      await prisma.blacklistToken.create({
-        data: {
-          token,
-          expired_at: new Date(decoded.exp * 1000),
-        },
-      });
-    }
 
     await prisma.user.update({
       where: { id: decoded.id },
       data: { refresh_token: null },
     });
 
-    safeAudit({
+    createAuditLog({
       userId: decoded.id,
+      targetId: decoded.id,
       action: "USER_LOGOUT",
       ip: getIP(req),
+      req,
     });
 
     return res.json({
       success: true,
       message: messages.LOGOUT_SUCCESS,
+    });
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ================= CHANGE PASSWORD =================
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: errors.VALIDATION_FAILED,
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: errors.VALIDATION_FAILED,
+        errors: [
+          {
+            field: "newPassword",
+            message: "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร",
+          },
+        ],
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: errors.NOT_FOUND,
+      });
+    }
+
+    const match = await bcrypt.compare(oldPassword, user.password);
+
+    if (!match) {
+      return res.status(400).json({
+        success: false,
+        message: "รหัสผ่านเดิมไม่ถูกต้อง",
+      });
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashed },
+    });
+
+    createAuditLog({
+      userId: user.id,
+      targetId: user.id,
+      action: "CHANGE_PASSWORD",
+      ip: getIP(req),
+      req,
+    });
+
+    return res.json({
+      success: true,
+      message: messages.UPDATED,
     });
 
   } catch (err) {
