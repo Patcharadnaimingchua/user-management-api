@@ -1,80 +1,134 @@
-User Management API
-RESTful API สำหรับจัดการผู้ใช้งาน พร้อม Authentication (JWT), Authorization (RBAC) และ Swagger Documentation
-1. ขั้นตอนติดตั้งและรัน Project ด้วย Docker Compose
-	- docker compose up --build
+# User Management API
 
-2.Environment Variables
-	- PORT=3000
-	- NODE_ENV=development
+<p align="center">
 
-	- DB_HOST=db
-	- DB_PORT=5432
-	- DB_NAME=userdb
-	- DB_USER=appuser
-	- DB_PASSWORD=changeme
+  <img src="docs/images/swagger.jpeg" width="900" alt="Swagger API Documentation">
 
-	- DATABASE_URL=postgresql://appuser:changeme@db:5432/userdb
+</p>
 
-	- JWT_SECRET=supersecret
-	- JWT_EXPIRES_IN=15m
-	- JWT_REFRESH_EXPIRES_IN=7d
+RESTful API สำหรับจัดการผู้ใช้งาน พัฒนาด้วย Node.js และ Express พร้อมระบบ Authentication (JWT), Role-Based Access Control (RBAC), Swagger Documentation และ Docker
 
-3.วิธีรัน Database Migration และ Seed Data
-	Migration
-		- docker exec -it node_app npx prisma migrate deploy
-	Seed (สร้าง admin)
-	 	- docker exec -it node_app npx prisma db seed
+## Highlights
 
-4.วิธีรัน Test Suite
-	- docker exec -it node_app npm test
+- RESTful API Design
+- JWT Authentication
+- Role-Based Access Control (RBAC)
+- Prisma ORM
+- Docker Deployment
+- Swagger Documentation
+- Unit & Integration Testing
 
-5. Link ไปยัง API Documentation (Swagger)
-	- http://localhost:3000/api-docs
+---
 
-ุ6.Account Admin และ User สำหรับทดสอบที่สร้างจาก Seed
-	admin
-	- Email: admin@example.com
-	- Password: 12345678
-	ใช้ Admin สำหรับทดสอบ endpoint ที่ต้องใช้สิทธิ์
-	user
-	- สามารถสมัครผ่าน API 
+## Features
 
-7. Framework และ Database ที่เลือกพร้อมเหตุผล
-	Framework: Node.js + Express.js
-	เลือกใช้ Express.js เนื่องจาก:
-		- เป็น framework ที่มีขนาดเล็ก (lightweight) และยืดหยุ่นสูง
-		- เหมาะสำหรับพัฒนา RESTful API
-		- มี ecosystem ใหญ่ และรองรับ middleware จำนวนมาก
-		- เข้าใจง่าย เหมาะกับการพัฒนาและขยายระบบในอนาค
-	Database: PostgreSQL
-	เลือกใช้ PostgreSQL เนื่องจาก:
-		- เป็น relational database ที่มีความเสถียรและนิยมใน production
-		- รองรับความสัมพันธ์ของข้อมูล (relations) ได้ดี
-		- มีความสามารถด้าน query ที่ทรงพลัง
-		- รองรับ transaction และ data integrity สูง
-	ORM: Prisma
-	เลือกใช้ Prisma เนื่องจาก:
-		- ใช้งานง่าย และลดความซับซ้อนของการเขียน SQL
-		- มี type safety ช่วยลด error ในการพัฒนา
-		- รองรับ migration และ seed database ได้สะดวก
-		- ทำงานร่วมกับ PostgreSQL ได้อย่างมีประสิทธิภาพ
-	Authentication: JWT (JSON Web Token)
-	เลือกใช้ JWT เนื่องจาก:
-		- เหมาะสำหรับระบบที่เป็น REST API (stateless)
-		- สามารถจัดการ authentication และ authorization ได้ง่าย
-		- รองรับการใช้งานร่วมกับ refresh token เพื่อเพิ่มความปลอดภัย
-	API Documentation: Swagger
-	เลือกใช้ Swagger เนื่องจาก:
-		- สามารถสร้างเอกสาร API อัตโนมัติจากโค้ด
-		- มี UI สำหรับทดสอบ API ได้ทันที
-		- ช่วยให้ผู้ใช้งานเข้าใจ API ได้ง่ายขึ้น
-	Testing: Jest + Supertest
-	เลือกใช้เนื่องจาก:
-		- Jest เป็น testing framework ที่ใช้งานง่ายและนิยม
-		- Supertest ใช้สำหรับทดสอบ HTTP API ได้โดยตรง
-		- สามารถทดสอบ endpoint จริงได้โดยไม่ต้องเปิด server
-	Containerization: Docker + Docker Compose
-	เลือกใช้เนื่องจาก:
-		- ทำให้สามารถรันโปรเจคได้เหมือนกันทุกเครื่อง
-		- ลดปัญหา environment ไม่ตรงกัน
-		- ช่วยให้ setup ระบบ (backend + database) ได้ง่ายในคำสั่งเดียว
+- User Registration & Login
+- JWT Authentication & Refresh Token
+- Role-Based Access Control (Admin / User)
+- User CRUD
+- Audit Log
+- Swagger API Documentation
+- Unit & Integration Testing
+
+---
+
+## Tech Stack
+
+- Node.js
+- Express.js
+- PostgreSQL
+- Prisma ORM
+- JWT
+- Swagger
+- Jest + Supertest
+- Docker & Docker Compose
+
+---
+
+## Getting Started
+
+Clone project
+
+```bash
+git clone https://github.com/Patcharadnaimingchua/user-management-api.git
+cd user-management-api
+```
+
+Run project
+
+```bash
+docker compose up --build
+```
+
+API
+
+```
+http://localhost:3000
+```
+
+Swagger
+
+```
+http://localhost:3000/api-docs
+```
+
+---
+
+## Environment Variables
+
+```env
+PORT=3000
+DATABASE_URL=postgresql://appuser:changeme@db:5432/userdb
+
+JWT_SECRET=supersecret
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+```
+
+---
+
+## Database
+
+Migration
+
+```bash
+docker exec -it node_app npx prisma migrate deploy
+```
+
+Seed
+
+```bash
+docker exec -it node_app npx prisma db seed
+```
+
+---
+
+## Testing
+
+```bash
+docker exec -it node_app npm test
+```
+
+---
+
+## Demo Account
+
+**Admin**
+
+```
+Email: admin@example.com
+Password: 12345678
+```
+
+---
+
+## Live Demo
+- API: https://user-management-api-layy.onrender.com
+
+- Swagger: https://user-management-api-layy.onrender.com/api-docs
+
+---
+
+## Developer
+
+**Patcharadnai Mingchua**
