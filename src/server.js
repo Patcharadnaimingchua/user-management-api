@@ -1,4 +1,5 @@
-require("dotenv").config();
+ฃrequire("dotenv").config();
+
 const express = require("express");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
@@ -13,21 +14,18 @@ const app = express();
 
 // ================= CONFIG =================
 
-// เปิดเฉพาะ production
 if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
 // ================= GLOBAL MIDDLEWARE =================
 
-// Security
 app.use(
   helmet({
     crossOriginResourcePolicy: false,
   })
 );
 
-// ================= CORS (PRO VERSION) =================
 app.use(
   cors({
     origin: true,
@@ -35,13 +33,10 @@ app.use(
   })
 );
 
-// Logging
 app.use(morgan("dev"));
 
-// JSON limit
 app.use(express.json({ limit: "10kb" }));
 
-// Rate limit
 app.use("/api", apiLimiter);
 
 // ================= SWAGGER =================
@@ -58,6 +53,7 @@ const swaggerSpec = swaggerJsdoc({
     servers: [
       {
         url: process.env.BASE_URL || "http://localhost:3000",
+        description: "API Server",
       },
     ],
     components: {
@@ -92,12 +88,23 @@ app.get("/health", (req, res) => {
   });
 });
 
+// ================= ROOT =================
+
 app.get("/", (req, res) => {
   res.json({
     success: true,
     message: "API running",
     version: "1.0.0",
     timestamp: new Date().toISOString(),
+  });
+});
+
+// ================= ENV CHECK =================
+
+app.get("/env-check", (req, res) => {
+  res.json({
+    NODE_ENV: process.env.NODE_ENV,
+    BASE_URL: process.env.BASE_URL,
   });
 });
 
