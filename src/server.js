@@ -29,7 +29,7 @@ app.use(
 // ================= CORS (PRO VERSION) =================
 app.use(
   cors({
-    origin: true, 
+    origin: true,
     credentials: true,
   })
 );
@@ -45,36 +45,34 @@ app.use("/api", apiLimiter);
 
 // ================= SWAGGER =================
 
-if (process.env.NODE_ENV !== "production") {
-  const swaggerSpec = swaggerJsdoc({
-    definition: {
-      openapi: "3.0.0",
-      info: {
-        title: "User Management API",
-        version: "1.0.0",
-        description:
-          "REST API with JWT Authentication, RBAC, Pagination and Filtering",
+const swaggerSpec = swaggerJsdoc({
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "User Management API",
+      version: "1.0.0",
+      description:
+        "REST API with JWT Authentication, RBAC, Pagination and Filtering",
+    },
+    servers: [
+      {
+        url: process.env.BASE_URL || "http://localhost:3000",
       },
-      servers: [
-        {
-          url: process.env.BASE_URL || "http://localhost:3000",
-        },
-      ],
-      components: {
-        securitySchemes: {
-          bearerAuth: {
-            type: "http",
-            scheme: "bearer",
-            bearerFormat: "JWT",
-          },
+    ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
         },
       },
     },
-    apis: [__dirname + "/routes/*.js"], // FIX docker path
-  });
+  },
+  apis: [__dirname + "/routes/*.js"],
+});
 
-  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-}
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // ================= ROUTES =================
 
